@@ -225,8 +225,9 @@ class D3Sunburst {
         this.currentRoot = rootNode;
         
         // Create hierarchy
+        // Only count leaf nodes' values so single children fill parent's angular span
         this.root = d3.hierarchy(rootNode)
-            .sum(d => d.value)
+            .sum(d => d.children && d.children.length > 0 ? 0 : (d.value || 1))
             .sort((a, b) => b.value - a.value);
         
         console.log('[D3Sunburst] Hierarchy created:', this.root);
