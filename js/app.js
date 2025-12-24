@@ -70,14 +70,14 @@ class TreeBuilder {
      */
     static getNodeColor(node) {
         const colors = {
-            thesis: '#FFD700',
+            thesis: '#87CEFA',
             foundational: '#4A90E2',
             practical: '#7ED321',
             support: '#50C878',
             attack: '#E74C3C'
         };
 
-        // For thesis, use gold color
+        // For thesis, use light blue color
         if (node.type === 'thesis') {
             return colors.thesis;
         }
@@ -93,7 +93,7 @@ class TreeBuilder {
      */
     static getBorderColor(node) {
         const colors = {
-            thesis: '#FFA500',
+            thesis: '#4A90E2',
             foundational: '#4A90E2',
             default: 'rgba(255,255,255,0.2)'
         };
