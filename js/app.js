@@ -18,10 +18,10 @@ class TreeBuilder {
      */
     static buildTree(nodes) {
         console.log('[TreeBuilder] buildTree() called with nodes:', nodes);
-        
+
         // Create a map for quick lookup
         const nodeMap = new Map();
-        
+
         // Initialize all nodes with empty children array
         nodes.forEach(node => {
             nodeMap.set(node.id, {
@@ -40,24 +40,34 @@ class TreeBuilder {
 
         console.log('[TreeBuilder] Thesis node found:', thesisNode);
 
-        // Build relationships
-        nodeMap.forEach((node, id) => {
-            if (node.relations && node.relations.length > 0) {
-                node.relations.forEach(relation => {
-                    const targetNode = nodeMap.get(relation.target_node_id);
-                    if (targetNode) {
-                        // Add this node as a child of the target
-                        // Store relation info on the child
-                        const childNode = {
-                            ...node,
-                            relationType: relation.relation_type,
-                            relationReasoning: relation.reasoning
-                        };
-                        targetNode.children.push(childNode);
-                    }
-                });
-            }
-        });
+        // Recursively build tree from thesis
+        const visited = new Set();
+        const buildTreeRecursive = (parentNode) => {
+            if (visited.has(parentNode.id)) return;
+            visited.add(parentNode.id);
+
+            // Find all nodes that target this parent node
+            const children = Array.from(nodeMap.values()).filter(n => {
+                if (!n.relations || n.relations.length === 0) return false;
+                return n.relations.some(r => r.target_node_id === parentNode.id);
+            });
+
+            console.log(`[TreeBuilder] Found ${children.length} children for node ${parentNode.id}:`, children.map(c => c.id));
+
+            children.forEach(childNode => {
+                // Add relation info to child
+                const relation = childNode.relations.find(r => r.target_node_id === parentNode.id);
+                const childWithRelation = {
+                    ...childNode,
+                    relationType: relation?.relation_type,
+                    relationReasoning: relation?.reasoning
+                };
+                parentNode.children.push(childWithRelation);
+                buildTreeRecursive(childWithRelation);
+            });
+        };
+
+        buildTreeRecursive(thesisNode);
 
         console.log('[TreeBuilder] Final tree with children:', thesisNode);
         return thesisNode;
@@ -69,22 +79,14 @@ class TreeBuilder {
      * @returns {string} Color hex code
      */
     static getNodeColor(node) {
-        const colors = {
-            thesis: '#87CEFA',
-            foundational: '#4A90E2',
-            practical: '#7ED321',
-            support: '#50C878',
-            attack: '#E74C3C'
-        };
-
         let baseColor;
 
         // For thesis, use light blue color
         if (node.type === 'thesis') {
-            baseColor = colors.thesis;
+            baseColor = Config.colors.thesis;
         } else {
             // For other nodes, color based on relation type
-            baseColor = node.relationType === 'attack' ? colors.attack : colors.support;
+            baseColor = node.relationType === 'attack' ? Config.colors.attack : Config.colors.support;
         }
 
         // Apply brightness based on intensity (higher intensity = darker)
@@ -92,22 +94,12 @@ class TreeBuilder {
         return this.adjustBrightness(baseColor, intensity);
     }
 
-    /**
-     * Adjust color brightness based on intensity (0-1)
-     * Higher intensity = darker, lower intensity = lighter
-     * @param {string} hexColor - Base color in hex format
-     * @param {number} intensity - Intensity value between 0 and 1
-     * @returns {string} Adjusted hex color
-     */
     static adjustBrightness(hexColor, intensity) {
         const r = parseInt(hexColor.slice(1, 3), 16);
         const g = parseInt(hexColor.slice(3, 5), 16);
         const b = parseInt(hexColor.slice(5, 7), 16);
 
-        // Adjust brightness: higher intensity = darker colors
-        // intensity 1 = darkest (factor 0.7)
-        // intensity 0 = lightest (factor 1.0)
-        const factor = 1.0 - (intensity * 0.5);
+        const factor = 1.0 - (intensity * Config.brightness.maxFactor);
 
         const adjustedR = Math.round(r * factor);
         const adjustedG = Math.round(g * factor);
@@ -122,32 +114,13 @@ class TreeBuilder {
      * @returns {string} Border color hex code
      */
     static getBorderColor(node) {
-        const colors = {
-            thesis: '#4A90E2',
-            foundational: '#4A90E2',
-            default: 'rgba(255,255,255,0.2)'
-        };
-
-        if (node.type === 'thesis') {
-            return colors.thesis;
-        }
-
-        if (node.type === 'foundational') {
-            return colors.foundational;
-        }
-
-        return colors.default;
+        return Config.colors.border;
     }
 
-    /**
-     * Get border width for node
-     * @param {Object} node - Node object
-     * @returns {number} Border width in pixels
-     */
     static getBorderWidth(node) {
-        if (node.type === 'thesis') return 3;
-        if (node.type === 'foundational') return 4;
-        return 2;
+        if (node.type === 'thesis') return Config.border.width.thesis;
+        if (node.type === 'foundational') return Config.border.width.foundational;
+        return Config.border.width.default;
     }
 }
 
@@ -166,11 +139,12 @@ class D3Sunburst {
         this.root = null;
         this.currentRoot = null;
         this.zoomStack = [];
-        
+        this.centerScale = Config.chart.defaultCenterScale;
+
         this.onHover = null;
         this.onMouseOut = null;
         this.onClick = null;
-        
+
         this.init();
     }
 
@@ -184,14 +158,14 @@ class D3Sunburst {
             .append('svg')
             .attr('width', '100%')
             .attr('height', '100%')
-            .attr('viewBox', '0 0 800 800')
+            .attr('viewBox', `0 0 ${Config.chart.viewBoxWidth} ${Config.chart.viewBoxHeight}`)
             .attr('preserveAspectRatio', 'xMidYMid meet');
         
         console.log('[D3Sunburst] SVG created:', this.svg);
         
         // Create group for chart
         this.g = this.svg.append('g')
-            .attr('transform', 'translate(400, 400)');
+            .attr('transform', `translate(${Config.chart.viewBoxWidth / 2}, ${Config.chart.viewBoxHeight / 2})`);
         
         console.log('[D3Sunburst] Group created:', this.g);
         
@@ -200,14 +174,13 @@ class D3Sunburst {
             .size([2 * Math.PI, this.radius]);
         
         // Create arc generator
-        // Scale factor: 0.6 = 40% reduction in center circle size
-        const centerScale = 0.6;
+        // Scale factor adjusted dynamically based on tree depth
         this.arc = d3.arc()
             .startAngle(d => d.x0)
             .endAngle(d => d.x1)
-            .padAngle(0.005) // Add small gap between segments
-            .innerRadius(d => d.y0 * centerScale)
-            .outerRadius(d => d.y1 * centerScale - 1);
+            .padAngle(0.03)
+            .innerRadius(d => d.y0 * this.centerScale)
+            .outerRadius(d => d.y1 * this.centerScale);
         
         // Handle resize
         window.addEventListener('resize', () => this.resize());
@@ -219,22 +192,20 @@ class D3Sunburst {
         const containerRect = this.container.getBoundingClientRect();
         this.width = containerRect.width;
         this.height = containerRect.height;
-        this.radius = Math.min(this.width, this.height) / 2 - 20;
-        
+        this.radius = Math.min(this.width, this.height) / 2 - Config.chart.radiusPadding;
+
         console.log('[D3Sunburst] resize() - width:', this.width, 'height:', this.height, 'radius:', this.radius);
-        
-        // Don't render if radius is too small
-        if (this.radius < 10) {
+
+        if (this.radius < Config.chart.minRadius) {
             console.log('[D3Sunburst] Radius too small, skipping render');
             return;
         }
         
         // Update partition and arc
         this.partition.size([2 * Math.PI, this.radius]);
-        const centerScale = 0.6;
-        this.arc.innerRadius(d => d.y0 * centerScale)
-            .outerRadius(d => d.y1 * centerScale - 1)
-            .padAngle(0.005); // Maintain gap between segments on resize
+        this.arc.innerRadius(d => d.y0 * this.centerScale)
+            .outerRadius(d => d.y1 * this.centerScale)
+            .padAngle(Config.spacing.padAngle.inner);
         
         // Update SVG viewBox
         this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
@@ -253,20 +224,60 @@ class D3Sunburst {
     render(rootNode) {
         console.log('[D3Sunburst] render() called with rootNode:', rootNode);
         this.currentRoot = rootNode;
-        
+
         // Create hierarchy
-        // Only count leaf nodes' values so single children fill parent's angular span
-        this.root = d3.hierarchy(rootNode)
-            .sum(d => d.children && d.children.length > 0 ? 0 : (d.value || 1))
-            .sort((a, b) => b.value - a.value);
-        
+        // Don't use .sum() - it accumulates descendant values
+        // We'll manually assign equal angular space
+        this.root = d3.hierarchy(rootNode);
+
         console.log('[D3Sunburst] Hierarchy created:', this.root);
         console.log('[D3Sunburst] Descendants:', this.root.descendants());
-        
-        // Apply partition
+
+        // Calculate max depth to adjust scaling
+        let maxDepth = 0;
+        this.root.each(d => { maxDepth = Math.max(maxDepth, d.depth); });
+        console.log('[D3Sunburst] Max depth:', maxDepth);
+
+        // Apply partition with dummy values
         this.partition(this.root);
-        
-        console.log('[D3Sunburst] After partition, root:', this.root);
+
+        // Manually assign equal angular space to siblings at each level
+        const setEqualAngles = (node, x0, x1) => {
+            node.x0 = x0;
+            node.x1 = x1;
+
+            if (node.children && node.children.length > 0) {
+                const span = x1 - x0;
+                const childSpan = span / node.children.length;
+                node.children.forEach((child, i) => {
+                    setEqualAngles(child, x0 + i * childSpan, x0 + (i + 1) * childSpan);
+                });
+            }
+        };
+        setEqualAngles(this.root, 0, 2 * Math.PI);
+
+        console.log('[D3Sunburst] After manual angle assignment');
+
+        console.log('[D3Sunburst] After manual angle assignment');
+
+        const getRadius = (y) => {
+            const normalized = y / this.radius;
+            const exponent = Config.spacing.radiusExponent.base + (maxDepth - Config.spacing.exponentDepthThreshold) * Config.spacing.radiusExponent.perLevel;
+            return Math.pow(normalized, exponent) * this.radius;
+        };
+
+        console.log('[D3Sunburst] Radius exponent:', Config.spacing.radiusExponent.base + (maxDepth - Config.spacing.exponentDepthThreshold) * Config.spacing.radiusExponent.perLevel);
+
+        const verticalGap = this.radius * Config.spacing.verticalGap;
+
+        const getPadAngle = (d) => {
+            const depthFraction = d.depth / maxDepth;
+            return Config.spacing.padAngle.inner - (depthFraction * (Config.spacing.padAngle.inner - Config.spacing.padAngle.outer));
+        };
+
+        this.arc.innerRadius(d => getRadius(d.y0) + verticalGap)
+            .outerRadius(d => getRadius(d.y1) - verticalGap)
+            .padAngle(getPadAngle);
         
         // Clear previous content
         this.g.selectAll('*').remove();
@@ -534,8 +545,7 @@ class DebateVisualizer {
             console.log('[DebateVisualizer] About to call chart.render()');
             this.chart.render(this.currentTree);
             
-            // Force resize after chart becomes visible
-            setTimeout(() => this.chart.resize(), 50);
+            setTimeout(() => this.chart.resize(), Config.animation.resizeDelay);
 
         } catch (error) {
             console.error('Error loading file:', error);
