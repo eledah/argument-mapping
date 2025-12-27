@@ -64,7 +64,7 @@ class TreeBuilder {
     }
 
     /**
-     * Get color for node based on type and relation
+     * Get color for node based on type and relation, with brightness based on intensity
      * @param {Object} node - Node object
      * @returns {string} Color hex code
      */
@@ -77,13 +77,43 @@ class TreeBuilder {
             attack: '#E74C3C'
         };
 
+        let baseColor;
+
         // For thesis, use light blue color
         if (node.type === 'thesis') {
-            return colors.thesis;
+            baseColor = colors.thesis;
+        } else {
+            // For other nodes, color based on relation type
+            baseColor = node.relationType === 'attack' ? colors.attack : colors.support;
         }
 
-        // For other nodes, color based on relation type
-        return node.relationType === 'attack' ? colors.attack : colors.support;
+        // Apply brightness based on intensity (higher intensity = darker)
+        const intensity = node.score?.intensity || 0.5;
+        return this.adjustBrightness(baseColor, intensity);
+    }
+
+    /**
+     * Adjust color brightness based on intensity (0-1)
+     * Higher intensity = darker, lower intensity = lighter
+     * @param {string} hexColor - Base color in hex format
+     * @param {number} intensity - Intensity value between 0 and 1
+     * @returns {string} Adjusted hex color
+     */
+    static adjustBrightness(hexColor, intensity) {
+        const r = parseInt(hexColor.slice(1, 3), 16);
+        const g = parseInt(hexColor.slice(3, 5), 16);
+        const b = parseInt(hexColor.slice(5, 7), 16);
+
+        // Adjust brightness: higher intensity = darker colors
+        // intensity 1 = darkest (factor 0.7)
+        // intensity 0 = lightest (factor 1.0)
+        const factor = 1.0 - (intensity * 0.5);
+
+        const adjustedR = Math.round(r * factor);
+        const adjustedG = Math.round(g * factor);
+        const adjustedB = Math.round(b * factor);
+
+        return `#${adjustedR.toString(16).padStart(2, '0')}${adjustedG.toString(16).padStart(2, '0')}${adjustedB.toString(16).padStart(2, '0')}`;
     }
 
     /**
@@ -525,21 +555,15 @@ class DebateVisualizer {
         document.getElementById('detailDescription').textContent = nodeData.description;
         document.getElementById('detailQuote').textContent = `"${nodeData.quote || ''}"`;
         
-        // Update relation info
-        const relationLabel = document.getElementById('relationLabel');
-        const relationType = document.getElementById('relationType');
+        // Update relation info via border color
         const relationReasoning = document.getElementById('detailReasoning');
         
         if (nodeData.relationType) {
-            relationLabel.style.display = 'inline';
-            relationType.style.display = 'inline';
-            relationType.textContent = this.translateRelation(nodeData.relationType);
-            relationType.className = `relation-type ${nodeData.relationType}`;
-            relationReasoning.textContent = nodeData.relationReasoning || '';
-            relationReasoning.style.display = 'block';
+            card.classList.remove('border-support', 'border-attack');
+            card.classList.add(`border-${nodeData.relationType}`);
+            relationReasoning.style.display = 'none';
         } else {
-            relationLabel.style.display = 'none';
-            relationType.style.display = 'none';
+            card.classList.remove('border-support', 'border-attack');
             relationReasoning.style.display = 'none';
         }
         
