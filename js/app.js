@@ -362,14 +362,15 @@ class DebateVisualizer {
 
     /**
      * Load list of JSON files from json directory
+     * Dynamically discovers JSON files by attempting to fetch them
      */
     async loadFileList() {
         const fileList = document.getElementById('fileList');
         fileList.innerHTML = '<div class="loading">در حال بارگذاری...</div>';
 
         try {
-            // List of known JSON files (in production, this would be fetched from server)
-            const files = ['hijab.json'];
+            // Try to fetch a manifest file first
+            const files = await this.discoverJsonFiles();
             
             fileList.innerHTML = '';
             
@@ -381,6 +382,69 @@ class DebateVisualizer {
             console.error('Error loading file list:', error);
             fileList.innerHTML = '<div class="loading">خطا در بارگذاری فایل‌ها</div>';
         }
+    }
+
+    /**
+     * Discover JSON files in the json directory
+     * Tries multiple methods to find available JSON files
+     * @returns {Promise<Array<string>>} Array of JSON filenames
+     */
+    async discoverJsonFiles() {
+        let files = [];
+        
+        try {
+            // Method 1: Try to fetch a manifest file
+            const manifestResponse = await fetch('json/files.json');
+            if (manifestResponse.ok) {
+                const manifest = await manifestResponse.json();
+                if (Array.isArray(manifest.files)) {
+                    files = manifest.files;
+                    console.log('[DebateVisualizer] Loaded file list from manifest:', files);
+                    return files;
+                }
+            }
+        } catch (e) {
+            console.log('[DebateVisualizer] No manifest file found, trying fallback methods');
+        }
+        
+        try {
+            // Method 2: Try to fetch an index file (common in static hosting)
+            const indexResponse = await fetch('json/?t=' + Date.now(), { method: 'HEAD' });
+            if (indexResponse.ok) {
+                console.log('[DebateVisualizer] Index listing available, but parsing not supported in pure JS');
+            }
+        } catch (e) {
+            console.log('[DebateVisualizer] Cannot list directory directly');
+        }
+        
+        try {
+            // Method 3: Try to discover files by attempting common filenames
+            const potentialFiles = ['hijab.json', 'debate.json', 'argument.json', 'logic.json'];
+            
+            for (const filename of potentialFiles) {
+                try {
+                    const response = await fetch(`json/${filename}`, { method: 'HEAD' });
+                    if (response.ok) {
+                        if (!files.includes(filename)) {
+                            files.push(filename);
+                            console.log('[DebateVisualizer] Discovered file:', filename);
+                        }
+                    }
+                } catch (e) {
+                    // File doesn't exist, skip
+                }
+            }
+        } catch (e) {
+            console.log('[DebateVisualizer] File discovery failed:', e);
+        }
+        
+        // Fallback: Return hijab.json if no files found
+        if (files.length === 0) {
+            console.log('[DebateVisualizer] No files discovered, using fallback');
+            files = ['hijab.json'];
+        }
+        
+        return files;
     }
 
     /**
@@ -530,9 +594,13 @@ class DebateVisualizer {
      * @param {Object} d3Node - D3 node object
      */
     handleClick(nodeData, d3Node) {
-        // If clicking on center node, zoom out
-        if (nodeData.type === 'thesis' && this.zoomStack.length > 1) {
-            this.zoomOut();
+        // If clicking on center node (depth 0)
+        if (d3Node.depth === 0) {
+            // Only zoom out if not at the top level
+            if (this.zoomStack.length > 1) {
+                this.zoomOut();
+            }
+            // If at top level, do nothing
         } else if (nodeData.children && nodeData.children.length > 0) {
             // Zoom in to clicked node
             this.zoomIn(nodeData.id);

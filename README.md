@@ -33,6 +33,7 @@ argument-mapping/
 ├── js/
 │   └── app.js              # Main application logic
 ├── json/
+│   ├── files.json          # Manifest of available debate files
 │   └── hijab.json          # Sample debate data
 ├── index.html              # Main HTML structure
 └── README.md               # This file
@@ -87,13 +88,14 @@ The application expects JSON files with the following structure:
 ## Adding New Debates
 
 1. Create a new JSON file in the `json/` directory following the data format above
-2. Add the filename to the `files` array in `js/app.js` (line 372)
+2. Add the filename to the `files` array in `json/files.json`
 3. Ensure the JSON includes a node with `type: "thesis"` as the root
+4. The application will automatically discover and load the new file on page refresh
 
 ## Roadmap - Future Improvements
 
 ### Immediate Enhancements
-- [ ] **Dynamic File Loading**: Automatically discover and load all JSON files from the `json/` directory without manual configuration
+- [x] **Dynamic File Loading**: Automatically discover and load all JSON files from the `json/` directory without manual configuration
 - [ ] **Search Functionality**: Add search bar to filter debates or find specific arguments within loaded debates
 - [ ] **Export Features**: Allow users to export the current visualization as PNG/SVG or data as JSON/CSV
 
