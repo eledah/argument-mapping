@@ -870,34 +870,66 @@ class DebateVisualizer {
         const copyBtn = document.getElementById('copyPromptBtn');
 
         copyBtn.addEventListener('click', async () => {
+            let promptText = '';
+
             try {
                 // Fetch the system prompt file
                 const response = await fetch('system_prompt.md');
                 if (!response.ok) {
                     throw new Error('Failed to fetch system prompt');
                 }
-                const promptText = await response.text();
-
-                // Copy to clipboard
-                await navigator.clipboard.writeText(promptText);
-
-                // Show toast notification
-                this.showToast('کپی شد!');
+                promptText = await response.text();
 
             } catch (error) {
-                console.error('Error copying system prompt:', error);
+                console.error('Error fetching system prompt:', error);
+                // Use fallback hardcoded text
+                promptText = await this.getSystemPromptFallback();
+            }
 
-                // Fallback: try to read directly from the file system
+            // Try modern clipboard API first
+            if (navigator.clipboard && navigator.clipboard.writeText) {
                 try {
-                    const promptText = await this.getSystemPromptFallback();
                     await navigator.clipboard.writeText(promptText);
                     this.showToast('کپی شد!');
-                } catch (fallbackError) {
-                    console.error('Fallback also failed:', fallbackError);
-                    alert('خطا در کپی کردن سیستم پرامپت');
+                    return;
+                } catch (clipboardError) {
+                    console.error('Clipboard API failed:', clipboardError);
+                    // Fall through to fallback method
                 }
             }
+
+            // Fallback: use execCommand (works on HTTP)
+            try {
+                this.copyTextFallback(promptText);
+                this.showToast('کپی شد!');
+            } catch (fallbackError) {
+                console.error('Fallback copy also failed:', fallbackError);
+                alert('خطا در کپی کردن سیستم پرامپت');
+            }
         });
+    }
+
+    /**
+     * Fallback copy method using execCommand
+     * @param {string} text - Text to copy
+     */
+    copyTextFallback(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+
+        textarea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            if (!successful) {
+                throw new Error('execCommand failed');
+            }
+        } finally {
+            document.body.removeChild(textarea);
+        }
     }
 
     /**
