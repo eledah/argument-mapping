@@ -56,6 +56,7 @@ Process the transcript to add/update nodes.
 }
 
 ---
+
 <speakers_list>
 {{INSERT_SPEAKER_NAMES_HERE}}
 </speakers_list>
