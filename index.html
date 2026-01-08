@@ -26,6 +26,22 @@
             <div class="file-list" id="fileList">
                 <div class="loading">در حال بارگذاری...</div>
             </div>
+            <div class="sidebar-footer">
+                <button class="action-btn upload-btn" id="uploadBtn" title="بارگذاری فایل JSON">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17,8 12,3 7,8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <input type="file" id="fileInput" accept=".json" style="display: none;">
+                </button>
+                <button class="action-btn copy-btn" id="copyPromptBtn" title="کپی سیستم پرامپت">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                </button>
+            </div>
         </aside>
 
         <!-- Main Content -->
@@ -68,6 +84,9 @@
             </div>
         </main>
     </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
 
     <!-- Detail Card (Tooltip) -->
     <div class="detail-card" id="detailCard">

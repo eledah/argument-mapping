@@ -358,17 +358,23 @@ class DebateVisualizer {
     init() {
         console.log('[DebateVisualizer] init() called');
         console.log('[DebateVisualizer] d3 available:', typeof d3 !== 'undefined');
-        
+
         // Initialize D3 Sunburst chart
         this.chart = new D3Sunburst('sunburstChart');
-        
+
         // Set up event handlers
         this.chart.onHover = (nodeData, event) => this.handleHover(nodeData, event);
         this.chart.onMouseOut = () => this.handleMouseOut();
         this.chart.onClick = (nodeData, d3Node) => this.handleClick(nodeData, d3Node);
-        
+
         // Load file list
         this.loadFileList();
+
+        // Set up upload functionality
+        this.setupUpload();
+
+        // Set up copy prompt functionality
+        this.setupCopyPrompt();
     }
 
     /**
@@ -764,6 +770,224 @@ class DebateVisualizer {
             attack: 'انتقاد'
         };
         return translations[relation] || relation;
+    }
+
+    /**
+     * Set up file upload functionality
+     */
+    setupUpload() {
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.handleFileUpload(file);
+            }
+            // Reset input so same file can be selected again
+            fileInput.value = '';
+        });
+    }
+
+    /**
+     * Handle uploaded file
+     * @param {File} file - Uploaded file object
+     */
+    async handleFileUpload(file) {
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+
+            // Validate data structure
+            if (!this.validateUploadedData(data)) {
+                alert('خطا: ساختار فایل نامعتبر است. فایل باید دارای آرایه "new_nodes" با حداقل یک گزاره اصلی (thesis) باشد.');
+                return;
+            }
+
+            // Clear active state from file list
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            this.activeFile = file.name;
+
+            console.log('[DebateVisualizer] Uploaded data:', data);
+            this.currentData = data;
+
+            // Build tree from flat nodes
+            this.currentTree = TreeBuilder.buildTree(data.new_nodes);
+            console.log('[DebateVisualizer] Tree built:', this.currentTree);
+
+            if (!this.currentTree) {
+                console.error('Failed to build tree from data');
+                alert('خطا: نتوانستیم ساختار درختی را از داده‌ها بسازیم.');
+                return;
+            }
+
+            // Reset zoom stack
+            this.zoomStack = [this.currentTree];
+
+            // Show chart, hide empty state
+            document.getElementById('chartWrapper').classList.add('active');
+            document.getElementById('emptyState').style.display = 'none';
+
+            // Update UI
+            this.updateChartHeader(this.currentTree);
+            console.log('[DebateVisualizer] About to call chart.render()');
+            this.chart.render(this.currentTree);
+
+            setTimeout(() => this.chart.resize(), Config.animation.resizeDelay);
+
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            alert('خطا: فایل نامعتبر است یا خواندن آن ممکن نیست.');
+        }
+    }
+
+    /**
+     * Validate uploaded data structure
+     * @param {Object} data - Parsed JSON data
+     * @returns {boolean} True if valid
+     */
+    validateUploadedData(data) {
+        if (!data || typeof data !== 'object') return false;
+        if (!Array.isArray(data.new_nodes)) return false;
+        if (data.new_nodes.length === 0) return false;
+
+        // Check for at least one thesis node
+        const hasThesis = data.new_nodes.some(node => node.type === 'thesis');
+        return hasThesis;
+    }
+
+    /**
+     * Set up copy system prompt functionality
+     */
+    setupCopyPrompt() {
+        const copyBtn = document.getElementById('copyPromptBtn');
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                // Fetch the system prompt file
+                const response = await fetch('system_prompt.md');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch system prompt');
+                }
+                const promptText = await response.text();
+
+                // Copy to clipboard
+                await navigator.clipboard.writeText(promptText);
+
+                // Show toast notification
+                this.showToast('کپی شد!');
+
+            } catch (error) {
+                console.error('Error copying system prompt:', error);
+
+                // Fallback: try to read directly from the file system
+                try {
+                    const promptText = await this.getSystemPromptFallback();
+                    await navigator.clipboard.writeText(promptText);
+                    this.showToast('کپی شد!');
+                } catch (fallbackError) {
+                    console.error('Fallback also failed:', fallbackError);
+                    alert('خطا در کپی کردن سیستم پرامپت');
+                }
+            }
+        });
+    }
+
+    /**
+     * Fallback method to get system prompt text
+     * @returns {Promise<string>} System prompt text
+     */
+    async getSystemPromptFallback() {
+        return `# Role
+You are a Lead Logic Analyst. Your mission is to structure chaotic debates into a hierarchical Argument Graph (DAG). You identify the **CORE ARGUMENT** and ensure every node is a distinct **proposition**, not just a topic.
+
+# Input Data
+1. <transcript>: Raw text from the debate (Farsi).
+2. <existing_graph>: Current JSON of the argument map.
+3. <speakers_list>: Names of the main participants.
+
+# PHASE 1: The Core Argument (Thesis)
+**IF** \`<existing_graph>\` is EMPTY, define Node "1":
+- It must be the central **Claim** of the debate (e.g., "The government must not interfere in clothing").
+- Mark as \`"type": "thesis"\`.
+
+# PHASE 2: Argument Extraction
+Process the transcript to add/update nodes.
+1. **Segmentation:** Break text into atomic logical units.
+2. **Attribution:** Assign correct speaker.
+3. **Depth Analysis (Tagging):** \`thesis\`, \`foundational\`, \`practical\`.
+
+# Content Rules (Strict)
+1. **Title (The Proposition):**
+   - **Constraint:** MUST be a complete sentence with a **Verb**. It represents a claim that can be True or False.
+   - **Negative Example:** "Economic Cost" (This is a topic, NOT a title).
+   - **Positive Example:** "The plan causes inflation" (این طرح تورم‌زا است).
+   - Length: Short (3-8 words).
+2. **Description:** The full logical argument, clarifying the reasoning.
+3. **Quote:** Verbatim substring from text.
+
+# Linking Logic
+- Link new nodes to the most relevant existing node.
+- **NO LOOPS:** Ensure DAG structure.
+
+# Output Schema (JSON Only)
+{
+  "new_nodes": [
+    {
+      "id": "String (Integer, sequential)",
+      "title": "String (Farsi Proposition with VERB)",
+      "description": "String (Full Farsi argument)",
+      "quote": "String (Verbatim text)",
+      "speaker": "String",
+      "type": "thesis" | "foundational" | "practical",
+      "score": {
+        "intensity": Float (0-1),
+        "confidence": Float (0-1)
+      },
+      "relations": [
+        {
+          "target_node_id": "String (Target ID)",
+          "relation_type": "support" | "attack",
+          "reasoning": "String"
+        }
+      ]
+    }
+  ]
+}
+
+---
+<speakers_list>
+{{INSERT_SPEAKER_NAMES_HERE}}
+</speakers_list>
+
+<existing_graph>
+{{INSERT_EXISTING_JSON_HERE}}
+</existing_graph>
+
+<transcript>
+{{INSERT_RAW_TEXT_HERE}}
+</transcript>`;
+    }
+
+    /**
+     * Show toast notification
+     * @param {string} message - Message to display
+     */
+    showToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('visible');
+
+        setTimeout(() => {
+            toast.classList.remove('visible');
+        }, 2000);
     }
 }
 
