@@ -34,7 +34,7 @@ No automated tests exist currently. When adding tests, use a testing framework c
 **Imports & Dependencies:**
 - Use ES6+ syntax (const/let, arrow functions, async/await)
 - No build tools - load D3.js from CDN in HTML
-- Keep script loading order: config.js before app.js in HTML
+- Modular architecture with ES6 modules: main.js imports from config.js, TreeBuilder.js, D3Sunburst.js, DebateVisualizer.js
 
 **Classes & Structure:**
 - Use ES6 class syntax with JSDoc comments

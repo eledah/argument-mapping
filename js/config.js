@@ -3,10 +3,10 @@
  * Centralized configuration for colors, spacing, and chart parameters
  */
 
-const Config = {
+export const Config = {
     // ==================== Colors ====================
     colors: {
-        thesis: '#87CEFA',
+        thesis: '#FFD700',
         foundational: '#4A90E2',
         practical: '#7ED321',
         support: '#50C878',
@@ -73,7 +73,3 @@ const Config = {
         resizeDelay: 50
     }
 };
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Config;
-}

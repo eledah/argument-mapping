@@ -1,357 +1,20 @@
 /**
- * Debate Logic Visualizer - Main Application
- * Implements Sunburst chart visualization for argument mapping using D3.js
+ * Debate Visualizer Application
+ * Main application logic for loading, visualizing, and interacting with debate data
  */
 
-console.log('[app.js] Script loaded');
-console.log('[app.js] d3 object:', typeof d3 !== 'undefined' ? d3 : 'NOT DEFINED');
+import { Config } from './config.js';
+import { D3Sunburst } from './D3Sunburst.js';
+import { TreeBuilder } from './TreeBuilder.js';
 
-// ==================== TreeBuilder Utility ====================
-/**
- * Converts flat JSON node list to nested tree structure for Sunburst chart
- */
-class TreeBuilder {
-    /**
-     * Build tree from flat node list
-     * @param {Array} nodes - Array of node objects
-     * @returns {Object} Root node with children
-     */
-    static buildTree(nodes) {
-        console.log('[TreeBuilder] buildTree() called with nodes:', nodes);
-
-        // Create a map for quick lookup
-        const nodeMap = new Map();
-
-        // Initialize all nodes with empty children array
-        nodes.forEach(node => {
-            nodeMap.set(node.id, {
-                ...node,
-                children: [],
-                value: node.score?.intensity || 1
-            });
-        });
-
-        // Find the thesis node (root)
-        const thesisNode = Array.from(nodeMap.values()).find(n => n.type === 'thesis');
-        if (!thesisNode) {
-            console.error('No thesis node found in the data');
-            return null;
-        }
-
-        console.log('[TreeBuilder] Thesis node found:', thesisNode);
-
-        // Recursively build tree from thesis
-        const visited = new Set();
-        const buildTreeRecursive = (parentNode) => {
-            if (visited.has(parentNode.id)) return;
-            visited.add(parentNode.id);
-
-            // Find all nodes that target this parent node
-            const children = Array.from(nodeMap.values()).filter(n => {
-                if (!n.relations || n.relations.length === 0) return false;
-                return n.relations.some(r => r.target_node_id === parentNode.id);
-            });
-
-            console.log(`[TreeBuilder] Found ${children.length} children for node ${parentNode.id}:`, children.map(c => c.id));
-
-            children.forEach(childNode => {
-                // Add relation info to child
-                const relation = childNode.relations.find(r => r.target_node_id === parentNode.id);
-                const childWithRelation = {
-                    ...childNode,
-                    relationType: relation?.relation_type,
-                    relationReasoning: relation?.reasoning
-                };
-                parentNode.children.push(childWithRelation);
-                buildTreeRecursive(childWithRelation);
-            });
-        };
-
-        buildTreeRecursive(thesisNode);
-
-        console.log('[TreeBuilder] Final tree with children:', thesisNode);
-        return thesisNode;
-    }
-
-    /**
-     * Get color for node based on type and relation, with brightness based on intensity
-     * @param {Object} node - Node object
-     * @returns {string} Color hex code
-     */
-    static getNodeColor(node) {
-        let baseColor;
-
-        // For thesis, use light blue color
-        if (node.type === 'thesis') {
-            baseColor = Config.colors.thesis;
-        } else {
-            // For other nodes, color based on relation type
-            baseColor = node.relationType === 'attack' ? Config.colors.attack : Config.colors.support;
-        }
-
-        // Apply brightness based on intensity (higher intensity = darker)
-        const intensity = node.score?.intensity || 0.5;
-        return this.adjustBrightness(baseColor, intensity);
-    }
-
-    static adjustBrightness(hexColor, intensity) {
-        const r = parseInt(hexColor.slice(1, 3), 16);
-        const g = parseInt(hexColor.slice(3, 5), 16);
-        const b = parseInt(hexColor.slice(5, 7), 16);
-
-        const factor = 1.0 - (intensity * Config.brightness.maxFactor);
-
-        const adjustedR = Math.round(r * factor);
-        const adjustedG = Math.round(g * factor);
-        const adjustedB = Math.round(b * factor);
-
-        return `#${adjustedR.toString(16).padStart(2, '0')}${adjustedG.toString(16).padStart(2, '0')}${adjustedB.toString(16).padStart(2, '0')}`;
-    }
-
-    /**
-     * Get border color for node
-     * @param {Object} node - Node object
-     * @returns {string} Border color hex code
-     */
-    static getBorderColor(node) {
-        return Config.colors.border;
-    }
-
-    static getBorderWidth(node) {
-        if (node.type === 'thesis') return Config.border.width.thesis;
-        if (node.type === 'foundational') return Config.border.width.foundational;
-        return Config.border.width.default;
-    }
-}
-
-// ==================== D3 Sunburst Chart ====================
-class D3Sunburst {
-    constructor(containerId) {
-        console.log('[D3Sunburst] Constructor called with containerId:', containerId);
-        this.container = document.getElementById(containerId);
-        console.log('[D3Sunburst] Container element:', this.container);
-        this.width = 0;
-        this.height = 0;
-        this.radius = 0;
-        this.svg = null;
-        this.partition = null;
-        this.arc = null;
-        this.root = null;
-        this.currentRoot = null;
-        this.zoomStack = [];
-        this.centerScale = Config.chart.defaultCenterScale;
-
-        this.onHover = null;
-        this.onMouseOut = null;
-        this.onClick = null;
-
-        this.init();
-    }
-
-    init() {
-        console.log('[D3Sunburst] init() called');
-        console.log('[D3Sunburst] d3 object:', d3);
-        console.log('[D3Sunburst] d3.version:', d3.version);
-        
-        // Create SVG
-        this.svg = d3.select(this.container)
-            .append('svg')
-            .attr('width', '100%')
-            .attr('height', '100%')
-            .attr('viewBox', `0 0 ${Config.chart.viewBoxWidth} ${Config.chart.viewBoxHeight}`)
-            .attr('preserveAspectRatio', 'xMidYMid meet');
-        
-        console.log('[D3Sunburst] SVG created:', this.svg);
-        
-        // Create group for chart
-        this.g = this.svg.append('g')
-            .attr('transform', `translate(${Config.chart.viewBoxWidth / 2}, ${Config.chart.viewBoxHeight / 2})`);
-        
-        console.log('[D3Sunburst] Group created:', this.g);
-        
-        // Create partition layout
-        this.partition = d3.partition()
-            .size([2 * Math.PI, this.radius]);
-        
-        // Create arc generator
-        // Scale factor adjusted dynamically based on tree depth
-        this.arc = d3.arc()
-            .startAngle(d => d.x0)
-            .endAngle(d => d.x1)
-            .padAngle(0.03)
-            .innerRadius(d => d.y0 * this.centerScale)
-            .outerRadius(d => d.y1 * this.centerScale);
-        
-        // Handle resize
-        window.addEventListener('resize', () => this.resize());
-        // Don't call resize during init - container may be hidden
-        // Resize will be called when chart becomes visible
-    }
-
-    resize() {
-        const containerRect = this.container.getBoundingClientRect();
-        this.width = containerRect.width;
-        this.height = containerRect.height;
-        this.radius = Math.min(this.width, this.height) / 2 - Config.chart.radiusPadding;
-
-        console.log('[D3Sunburst] resize() - width:', this.width, 'height:', this.height, 'radius:', this.radius);
-
-        if (this.radius < Config.chart.minRadius) {
-            console.log('[D3Sunburst] Radius too small, skipping render');
-            return;
-        }
-        
-        // Update partition and arc
-        this.partition.size([2 * Math.PI, this.radius]);
-        this.arc.innerRadius(d => d.y0 * this.centerScale)
-            .outerRadius(d => d.y1 * this.centerScale)
-            .padAngle(Config.spacing.padAngle.inner);
-        
-        // Update SVG viewBox
-        this.svg.attr('viewBox', `0 0 ${this.width} ${this.height}`);
-        this.g.attr('transform', `translate(${this.width / 2}, ${this.height / 2})`);
-        
-        // Re-render if data exists
-        if (this.root) {
-            this.render(this.currentRoot);
-        }
-    }
-
-    /**
-     * Render the sunburst chart
-     * @param {Object} rootNode - Root node to render
-     */
-    render(rootNode) {
-        console.log('[D3Sunburst] render() called with rootNode:', rootNode);
-        this.currentRoot = rootNode;
-
-        // Create hierarchy
-        // Don't use .sum() - it accumulates descendant values
-        // We'll manually assign equal angular space
-        this.root = d3.hierarchy(rootNode);
-
-        console.log('[D3Sunburst] Hierarchy created:', this.root);
-        console.log('[D3Sunburst] Descendants:', this.root.descendants());
-
-        // Calculate max depth to adjust scaling
-        let maxDepth = 0;
-        this.root.each(d => { maxDepth = Math.max(maxDepth, d.depth); });
-        console.log('[D3Sunburst] Max depth:', maxDepth);
-
-        // Apply partition with dummy values
-        this.partition(this.root);
-
-        // Manually assign equal angular space to siblings at each level
-        const setEqualAngles = (node, x0, x1) => {
-            node.x0 = x0;
-            node.x1 = x1;
-
-            if (node.children && node.children.length > 0) {
-                const span = x1 - x0;
-                const childSpan = span / node.children.length;
-                node.children.forEach((child, i) => {
-                    setEqualAngles(child, x0 + i * childSpan, x0 + (i + 1) * childSpan);
-                });
-            }
-        };
-        setEqualAngles(this.root, 0, 2 * Math.PI);
-
-        console.log('[D3Sunburst] After manual angle assignment');
-
-        console.log('[D3Sunburst] After manual angle assignment');
-
-        const getRadius = (y) => {
-            const normalized = y / this.radius;
-            const exponent = Config.spacing.radiusExponent.base + (maxDepth - Config.spacing.exponentDepthThreshold) * Config.spacing.radiusExponent.perLevel;
-            return Math.pow(normalized, exponent) * this.radius;
-        };
-
-        console.log('[D3Sunburst] Radius exponent:', Config.spacing.radiusExponent.base + (maxDepth - Config.spacing.exponentDepthThreshold) * Config.spacing.radiusExponent.perLevel);
-
-        const verticalGap = this.radius * Config.spacing.verticalGap;
-
-        const getPadAngle = (d) => {
-            const depthFraction = d.depth / maxDepth;
-            return Config.spacing.padAngle.inner - (depthFraction * (Config.spacing.padAngle.inner - Config.spacing.padAngle.outer));
-        };
-
-        this.arc.innerRadius(d => getRadius(d.y0) + verticalGap)
-            .outerRadius(d => getRadius(d.y1) - verticalGap)
-            .padAngle(getPadAngle);
-        
-        // Clear previous content
-        this.g.selectAll('*').remove();
-        
-        // Create paths
-        const paths = this.g.selectAll('path')
-            .data(this.root.descendants())
-            .enter()
-            .append('path')
-            .attr('d', this.arc)
-            .style('fill', d => TreeBuilder.getNodeColor(d.data))
-            .style('cursor', 'pointer')
-            .style('opacity', 1);
-        
-        console.log('[D3Sunburst] Paths created:', paths.size());
-        
-        // Add hover events
-        paths.on('mouseover', (event, d) => {
-            // Dim all paths
-            paths.style('opacity', 0.3);
-            // Highlight hovered path
-            d3.select(event.currentTarget)
-                .style('opacity', 1)
-                .style('filter', 'brightness(1.2)');
-            
-            if (this.onHover) {
-                this.onHover(d.data, event);
-            }
-        })
-        .on('mouseout', (event, d) => {
-            // Reset all paths
-            paths.style('opacity', 1)
-                .style('filter', 'none');
-            
-            if (this.onMouseOut) {
-                this.onMouseOut();
-            }
-        })
-        .on('click', (event, d) => {
-            if (this.onClick) {
-                this.onClick(d.data, d);
-            }
-        });
-    }
-
-    /**
-     * Zoom to a specific node
-     * @param {Object} node - Node to zoom to
-     */
-    zoomTo(node) {
-        this.currentRoot = node;
-        this.render(node);
-    }
-
-    /**
-     * Reset to original root
-     */
-    reset() {
-        if (this.root) {
-            this.currentRoot = this.root.data;
-            this.render(this.root.data);
-        }
-    }
-}
-
-// ==================== Application ====================
-class DebateVisualizer {
+export class DebateVisualizer {
     constructor() {
         this.chart = null;
         this.currentData = null;
         this.currentTree = null;
         this.zoomStack = [];
         this.activeFile = null;
-        
+
         this.init();
     }
 
@@ -388,9 +51,9 @@ class DebateVisualizer {
         try {
             // Try to fetch a manifest file first
             const files = await this.discoverJsonFiles();
-            
+
             fileList.innerHTML = '';
-            
+
             for (const filename of files) {
                 const fileItem = await this.createFileItem(filename);
                 fileList.appendChild(fileItem);
@@ -408,7 +71,7 @@ class DebateVisualizer {
      */
     async discoverJsonFiles() {
         let files = [];
-        
+
         try {
             // Method 1: Try to fetch a manifest file
             const manifestResponse = await fetch('json/files.json');
@@ -423,7 +86,7 @@ class DebateVisualizer {
         } catch (e) {
             console.log('[DebateVisualizer] No manifest file found, trying fallback methods');
         }
-        
+
         try {
             // Method 2: Try to fetch an index file (common in static hosting)
             const indexResponse = await fetch('json/?t=' + Date.now(), { method: 'HEAD' });
@@ -433,11 +96,11 @@ class DebateVisualizer {
         } catch (e) {
             console.log('[DebateVisualizer] Cannot list directory directly');
         }
-        
+
         try {
             // Method 3: Try to discover files by attempting common filenames
             const potentialFiles = ['hijab.json', 'debate.json', 'argument.json', 'logic.json'];
-            
+
             for (const filename of potentialFiles) {
                 try {
                     const response = await fetch(`json/${filename}`, { method: 'HEAD' });
@@ -454,13 +117,13 @@ class DebateVisualizer {
         } catch (e) {
             console.log('[DebateVisualizer] File discovery failed:', e);
         }
-        
+
         // Fallback: Return hijab.json if no files found
         if (files.length === 0) {
             console.log('[DebateVisualizer] No files discovered, using fallback');
             files = ['hijab.json'];
         }
-        
+
         return files;
     }
 
@@ -516,7 +179,7 @@ class DebateVisualizer {
      */
     async loadFile(filename, fileItem) {
         console.log('[DebateVisualizer] loadFile() called with filename:', filename);
-        
+
         // Update active state
         document.querySelectorAll('.file-item').forEach(item => {
             item.classList.remove('active');
@@ -529,11 +192,11 @@ class DebateVisualizer {
             const data = await this.loadJsonFile(filename);
             console.log('[DebateVisualizer] Data loaded:', data);
             this.currentData = data;
-            
+
             // Build tree from flat nodes
             this.currentTree = TreeBuilder.buildTree(data.new_nodes);
             console.log('[DebateVisualizer] Tree built:', this.currentTree);
-            
+
             if (!this.currentTree) {
                 console.error('Failed to build tree from data');
                 return;
@@ -545,12 +208,12 @@ class DebateVisualizer {
             // Show chart, hide empty state
             document.getElementById('chartWrapper').classList.add('active');
             document.getElementById('emptyState').style.display = 'none';
-            
+
             // Update UI - after chart is visible
             this.updateChartHeader(this.currentTree);
             console.log('[DebateVisualizer] About to call chart.render()');
             this.chart.render(this.currentTree);
-            
+
             setTimeout(() => this.chart.resize(), Config.animation.resizeDelay);
 
         } catch (error) {
@@ -566,16 +229,16 @@ class DebateVisualizer {
     updateChartHeader(node) {
         const titleEl = document.getElementById('chartTitle');
         const breadcrumbEl = document.getElementById('breadcrumb');
-        
+
         titleEl.textContent = node.title;
-        
+
         // Build breadcrumb
         if (this.zoomStack.length > 1) {
             const breadcrumbItems = this.zoomStack.map((n, index) => {
                 return `<span class="breadcrumb-item" data-index="${index}">${n.title}</span>`;
             });
             breadcrumbEl.innerHTML = breadcrumbItems.join('<span class="breadcrumb-separator"> / </span>');
-            
+
             // Add click handlers to breadcrumb items
             breadcrumbEl.querySelectorAll('.breadcrumb-item').forEach(item => {
                 item.addEventListener('click', (e) => {
@@ -630,7 +293,7 @@ class DebateVisualizer {
      */
     showDetailCard(nodeData, event) {
         const card = document.getElementById('detailCard');
-        
+
         // Update card content
         document.getElementById('detailType').textContent = this.translateType(nodeData.type);
         document.getElementById('detailType').className = `detail-type ${nodeData.type}`;
@@ -638,10 +301,10 @@ class DebateVisualizer {
         document.getElementById('detailTitle').textContent = nodeData.title;
         document.getElementById('detailDescription').textContent = nodeData.description;
         document.getElementById('detailQuote').textContent = `"${nodeData.quote || ''}"`;
-        
+
         // Update relation info via border color
         const relationReasoning = document.getElementById('detailReasoning');
-        
+
         if (nodeData.relationType) {
             card.classList.remove('border-support', 'border-attack');
             card.classList.add(`border-${nodeData.relationType}`);
@@ -650,21 +313,21 @@ class DebateVisualizer {
             card.classList.remove('border-support', 'border-attack');
             relationReasoning.style.display = 'none';
         }
-        
+
         // Update score
         const intensity = nodeData.score?.intensity || 0;
         document.getElementById('scoreFill').style.width = `${intensity * 100}%`;
         document.getElementById('scoreValue').textContent = intensity.toFixed(2);
-        
+
         // Position card near mouse
         const x = event.clientX;
         const y = event.clientY;
         const cardWidth = 350;
         const cardHeight = 400;
-        
+
         let posX = x + 20;
         let posY = y + 20;
-        
+
         // Prevent card from going off screen
         if (posX + cardWidth > window.innerWidth) {
             posX = x - cardWidth - 20;
@@ -672,7 +335,7 @@ class DebateVisualizer {
         if (posY + cardHeight > window.innerHeight) {
             posY = y - cardHeight - 20;
         }
-        
+
         card.style.left = `${posX}px`;
         card.style.top = `${posY}px`;
         card.classList.add('visible');
@@ -734,14 +397,14 @@ class DebateVisualizer {
         if (node.id === id) {
             return node;
         }
-        
+
         if (node.children) {
             for (const child of node.children) {
                 const found = this.findNodeById(child, id);
                 if (found) return found;
             }
         }
-        
+
         return null;
     }
 
@@ -1022,8 +685,3 @@ Process the transcript to add/update nodes.
         }, 2000);
     }
 }
-
-// Initialize application when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.app = new DebateVisualizer();
-});
