@@ -69,29 +69,30 @@ export class TreeBuilder {
     }
 
     /**
-     * Get color for node based on type and relation, with brightness based on intensity
-     * @param {Object} node - Node object
-     * @returns {string} Color hex code
-     */
-    static getNodeColor(node) {
-        let baseColor;
+      * Get color for node based on type and relation, with brightness based on intensity
+      * @param {Object} node - Node object
+      * @param {Object} currentRoot - Current root node (thesis)
+      * @returns {string} Color hex code
+      */
+     static getNodeColor(node, currentRoot) {
+         let baseColor;
 
-        // For thesis, use light blue color
-        if (node.type === 'thesis') {
-            baseColor = Config.colors.thesis;
-        } else {
-            // For other nodes, color based on relation type
-            baseColor = node.relationType === 'attack' ? Config.colors.attack : Config.colors.support;
-        }
+         // For current thesis (root), use light blue color
+         if (currentRoot && node.id === currentRoot.id) {
+             baseColor = Config.colors.thesis;
+         } else {
+             // For other nodes, color based on relation type
+             baseColor = node.relationType === 'attack' ? Config.colors.attack : Config.colors.support;
+         }
 
-        // Apply brightness based on intensity (higher intensity = darker)
-        // Skip brightness adjustment for thesis nodes
-        if (node.type === 'thesis') {
-            return baseColor;
-        }
-        const intensity = node.score?.intensity || 0.5;
-        return this.adjustBrightness(baseColor, intensity);
-    }
+         // Apply brightness based on intensity (higher intensity = darker)
+         // Skip brightness adjustment for thesis nodes
+         if (currentRoot && node.id === currentRoot.id) {
+             return baseColor;
+         }
+         const intensity = node.score?.intensity || 0.5;
+         return this.adjustBrightness(baseColor, intensity);
+     }
 
     static adjustBrightness(hexColor, intensity) {
         const r = parseInt(hexColor.slice(1, 3), 16);

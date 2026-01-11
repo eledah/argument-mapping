@@ -201,6 +201,39 @@ body {
     transform: scale(1.1);
 }
 
+/* Custom Tooltips for Action Buttons */
+.action-btn {
+    position: relative;
+}
+
+.action-btn::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--color-sidebar);
+    color: var(--color-text-light);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--font-family);
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+    z-index: 1000;
+    margin-bottom: 8px;
+}
+
+.action-btn:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-4px);
+}
+
 /* Main Content */
 .main-content {
     flex: 1;

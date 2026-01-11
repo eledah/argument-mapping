@@ -61,7 +61,7 @@ export class D3Sunburst {
             .endAngle(d => d.x1)
             .padAngle(0.03)
             .innerRadius(d => d.y0 * this.centerScale)
-            .outerRadius(d => d.y1 * this.centerScale);
+            .outerRadius(d => d.depth === 0 ? Math.min(d.y1 * this.centerScale, this.radius * Config.chart.maxCenterRadius) : d.y1 * this.centerScale);
 
         // Handle resize
         window.addEventListener('resize', () => this.resize());
@@ -85,7 +85,7 @@ export class D3Sunburst {
         // Update partition and arc
         this.partition.size([2 * Math.PI, this.radius]);
         this.arc.innerRadius(d => d.y0 * this.centerScale)
-            .outerRadius(d => d.y1 * this.centerScale)
+            .outerRadius(d => d.depth === 0 ? Math.min(d.y1 * this.centerScale, this.radius * Config.chart.maxCenterRadius) : d.y1 * this.centerScale)
             .padAngle(Config.spacing.padAngle.inner);
 
         // Update SVG viewBox
@@ -157,7 +157,7 @@ export class D3Sunburst {
         };
 
         this.arc.innerRadius(d => getRadius(d.y0) + verticalGap)
-            .outerRadius(d => getRadius(d.y1) - verticalGap)
+            .outerRadius(d => d.depth === 0 ? Math.min(getRadius(d.y1) - verticalGap, this.radius * Config.chart.maxCenterRadius) : getRadius(d.y1) - verticalGap)
             .padAngle(getPadAngle);
 
         // Clear previous content
@@ -169,7 +169,7 @@ export class D3Sunburst {
             .enter()
             .append('path')
             .attr('d', this.arc)
-            .style('fill', d => TreeBuilder.getNodeColor(d.data))
+            .style('fill', d => TreeBuilder.getNodeColor(d.data, rootNode))
             .style('cursor', 'pointer')
             .style('opacity', 1);
 
@@ -180,9 +180,10 @@ export class D3Sunburst {
             // Dim all paths
             paths.style('opacity', 0.3);
             // Highlight hovered path
+            const brightness = d.depth === 0 ? 1.05 : 1.2;
             d3.select(event.currentTarget)
                 .style('opacity', 1)
-                .style('filter', 'brightness(1.2)');
+                .style('filter', `brightness(${brightness})`);
 
             if (this.onHover) {
                 this.onHover(d.data, event);

@@ -32,11 +32,14 @@ export const Config = {
     // ==================== Chart Configuration ====================
     chart: {
         // SVG viewBox dimensions
-        viewBoxWidth: 800,
-        viewBoxHeight: 800,
+        viewBoxWidth: 1200,
+        viewBoxHeight: 1200,
 
         // Center scale for arc generation (default, adjusted dynamically based on depth)
         defaultCenterScale: 0.6,
+
+        // Maximum radius for center node as fraction of total radius
+        maxCenterRadius: 0.4,
 
         // Radius padding (space from container edge)
         radiusPadding: 5,
@@ -48,7 +51,7 @@ export const Config = {
     // ==================== Padding & Spacing ====================
     spacing: {
         // Vertical gap between concentric rings (as fraction of radius)
-        verticalGap: 0.005,
+        verticalGap: 0.01,
 
         // Horizontal padAngle between siblings (in radians)
         padAngle: {
@@ -59,7 +62,7 @@ export const Config = {
         // Radial distribution exponent
         // Higher = more compression of inner layers, more expansion of outer layers
         radiusExponent: {
-            base: 1.5,
+            base: 1.2,
             perLevel: 0.2
         },
 
